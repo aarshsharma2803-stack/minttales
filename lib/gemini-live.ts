@@ -1,6 +1,6 @@
 // Client-side only — WebSocket to Google Live API
 
-const LIVE_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent";
+const LIVE_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 
 export class GeminiLiveClient {
   private ws: WebSocket | null = null;
@@ -27,7 +27,7 @@ export class GeminiLiveClient {
     this.ws.onopen = () => {
       this.ws!.send(JSON.stringify({
         setup: {
-          model: "models/gemini-2.0-flash-live-001",
+          model: "models/gemini-3.1-flash-live-preview",
           systemInstruction: {
             parts: [{ text: this._systemInstruction }],
           },

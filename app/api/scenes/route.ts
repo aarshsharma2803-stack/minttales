@@ -7,53 +7,43 @@ import { NextRequest } from "next/server";
  * Returns scene data with base64 image data URLs for instant display.
  */
 
-const IMAGE_MODEL = "gemini-2.5-flash-preview-image-generation";
+const IMAGE_MODEL = "gemini-2.5-flash-image";
 
-async function generateImageWithGemini(
-  prompt: string
-): Promise<string> {
+async function generateImageWithGemini(prompt: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent`;
 
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey!,
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey!,
+    },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: `Generate a cinematic widescreen image: ${prompt}` }] }],
+      generationConfig: {
+        responseModalities: ["TEXT", "IMAGE"],
       },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `Generate a cinematic widescreen image: ${prompt}` }] }],
-        generationConfig: {
-          responseModalities: ["TEXT", "IMAGE"],
-        },
-      }),
-    });
+    }),
+  });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`Gemini image gen failed [${res.status}]:`, errText);
-      throw new Error(`Gemini image ${res.status}`);
-    }
-
-    const data = await res.json();
-    const parts = data.candidates?.[0]?.content?.parts ?? [];
-
-    // Find the image part in the response
-    for (const part of parts) {
-      if (part.inlineData?.data) {
-        const mime = part.inlineData.mimeType || "image/png";
-        return `data:${mime};base64,${part.inlineData.data}`;
-      }
-    }
-
-    throw new Error("No image in Gemini response");
-  } catch (e) {
-    console.error("Gemini image generation failed, falling back to Pollinations:", e);
-    // Fallback: Pollinations Flux
-    const seed = Math.floor(Math.random() * 99999);
-    return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1920&height=1080&nologo=true&seed=${seed}&model=flux`;
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error(`Gemini image gen failed [${res.status}]:`, errText);
+    throw new Error(`Gemini image generation failed: ${res.status}`);
   }
+
+  const data = await res.json();
+  const parts = data.candidates?.[0]?.content?.parts ?? [];
+
+  for (const part of parts) {
+    if (part.inlineData?.data) {
+      const mime = part.inlineData.mimeType || "image/png";
+      return `data:${mime};base64,${part.inlineData.data}`;
+    }
+  }
+
+  throw new Error("No image in Gemini response");
 }
 
 export async function POST(req: NextRequest) {
@@ -99,7 +89,6 @@ RULES:
       const parsed = JSON.parse(jsonStr);
       scenes = parsed.scenes || [];
     } catch {
-      // Fallback: split by paragraphs
       const paragraphs = content
         .split(/\n\n+/)
         .filter((p: string) => p.trim().length > 20);
@@ -110,11 +99,10 @@ RULES:
       }));
     }
 
-    // Limit to 3 scenes max
     scenes = scenes.slice(0, 3);
 
-    // Generate all 3 images in parallel with Gemini native image generation
-    console.log(`Generating ${scenes.length} images in parallel with Gemini Image...`);
+    // Generate all 3 images in parallel with Gemini 2.5 Flash Image
+    console.log(`Generating ${scenes.length} images with Gemini 2.5 Flash Image...`);
     const imageResults = await Promise.all(
       scenes.map((scene, i) => {
         const imagePrompt = `${scene.visual}, ${genre} style, cinematic, digital art, dramatic lighting, widescreen 16:9`;
