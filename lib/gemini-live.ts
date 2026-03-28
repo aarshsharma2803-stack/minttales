@@ -1,6 +1,7 @@
 // Client-side only — WebSocket to Google Live API
 
-const LIVE_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+const LIVE_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent";
+const LIVE_MODEL = "models/gemini-2.5-flash-native-audio-latest";
 
 export class GeminiLiveClient {
   private ws: WebSocket | null = null;
@@ -27,11 +28,17 @@ export class GeminiLiveClient {
     this.ws.onopen = () => {
       this.ws!.send(JSON.stringify({
         setup: {
-          model: "models/gemini-3.1-flash-live-preview",
+          model: LIVE_MODEL,
           systemInstruction: {
             parts: [{ text: this._systemInstruction }],
           },
-          generationConfig: { responseModalities: ["TEXT"] },
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } }
+            }
+          },
+          outputAudioTranscription: {},
         },
       }));
     };
@@ -40,9 +47,9 @@ export class GeminiLiveClient {
       try {
         const data = JSON.parse(event.data);
         if (data.setupComplete) { this.onReady(); return; }
-        const parts = data.serverContent?.modelTurn?.parts ?? [];
-        for (const part of parts) {
-          if (part.text) this.onText(part.text);
+        // Get text from output transcription
+        if (data.serverContent?.outputTranscription?.text) {
+          this.onText(data.serverContent.outputTranscription.text);
         }
       } catch { /* ignore parse errors */ }
     };

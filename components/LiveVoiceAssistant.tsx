@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
-const MODEL = "models/gemini-3.1-flash-live-preview";
+const WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent";
+const MODEL = "models/gemini-2.5-flash-native-audio-latest";
 const INPUT_SAMPLE_RATE = 16000;
 const OUTPUT_SAMPLE_RATE = 24000;
 
@@ -116,12 +116,13 @@ export default function LiveVoiceAssistant({ apiKey, genre, storyContext, onSugg
             parts: [{ text: getSystemInstruction() }]
           },
           generationConfig: {
-            responseModalities: ["AUDIO", "TEXT"],
+            responseModalities: ["AUDIO"],
             speechConfig: {
               voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } }
             }
           },
-          inputAudioTranscription: {}
+          inputAudioTranscription: {},
+          outputAudioTranscription: {}
         }
       }));
     };
@@ -144,10 +145,12 @@ export default function LiveVoiceAssistant({ apiKey, genre, storyContext, onSugg
           if (part.inlineData?.mimeType?.includes("audio")) {
             scheduleAudioPlayback(part.inlineData.data as string);
           }
-          if (part.text) {
-            aiTextBufRef.current += part.text;
-            setCurrentAiText(aiTextBufRef.current);
-          }
+        }
+
+        // Output transcription — the text version of what the AI is saying
+        if (msg.serverContent?.outputTranscription?.text) {
+          aiTextBufRef.current += msg.serverContent.outputTranscription.text;
+          setCurrentAiText(aiTextBufRef.current);
         }
 
         if (msg.serverContent?.turnComplete) {
@@ -161,8 +164,9 @@ export default function LiveVoiceAssistant({ apiKey, genre, storyContext, onSugg
           setStatus("ready");
         }
 
-        if (msg.inputTranscription?.text) {
-          const userText = msg.inputTranscription.text.trim();
+        // Input transcription — what the user said via mic
+        if (msg.serverContent?.inputTranscription?.text) {
+          const userText = msg.serverContent.inputTranscription.text.trim();
           if (userText) setMessages(prev => [...prev, { role: "user", text: userText }]);
         }
 

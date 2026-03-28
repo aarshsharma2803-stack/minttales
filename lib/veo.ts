@@ -1,7 +1,16 @@
 const VEO_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 const VEO_MODEL = "veo-2.0-generate-001";
 
-// Use dedicated VEO_API_KEY if set, fall back to GEMINI_API_KEY
+// Try VEO_API_KEY first, then GEMINI_API_KEY. Returns both for fallback.
+function getVeoKeys(): string[] {
+  const keys: string[] = [];
+  if (process.env.VEO_API_KEY) keys.push(process.env.VEO_API_KEY);
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== process.env.VEO_API_KEY) {
+    keys.push(process.env.GEMINI_API_KEY);
+  }
+  return keys.length > 0 ? keys : [""];
+}
+
 function getVeoKey(): string {
   return process.env.VEO_API_KEY || process.env.GEMINI_API_KEY || "";
 }
@@ -22,27 +31,35 @@ export async function createVeoJob(
   prompt: string,
   sceneIndex: number
 ): Promise<VeoJob> {
-  const url = `${VEO_API_BASE}/models/${VEO_MODEL}:predictLongRunning?key=${getVeoKey()}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      instances: [{ prompt: prompt.slice(0, 500) }],
-      parameters: {
-        aspectRatio: "16:9",
-        durationSeconds: 8,
-      },
-    }),
-  });
+  const keys = getVeoKeys();
+  let lastError = "";
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Veo job creation failed [${res.status}]: ${err}`);
+  for (const key of keys) {
+    const url = `${VEO_API_BASE}/models/${VEO_MODEL}:predictLongRunning?key=${key}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instances: [{ prompt: prompt.slice(0, 500) }],
+        parameters: {
+          aspectRatio: "16:9",
+          durationSeconds: 5,
+        },
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (!data.name) throw new Error(`Veo response missing operation name: ${JSON.stringify(data)}`);
+      // Store which key worked so polling uses the same one
+      return { operationName: data.name, sceneIndex, _key: key } as VeoJob & { _key: string };
+    }
+
+    lastError = await res.text();
+    console.warn(`Veo key ${key.slice(0, 10)}... failed [${res.status}], trying next key...`);
   }
 
-  const data = await res.json();
-  if (!data.name) throw new Error(`Veo response missing operation name: ${JSON.stringify(data)}`);
-  return { operationName: data.name, sceneIndex };
+  throw new Error(`Veo job creation failed with all keys: ${lastError}`);
 }
 
 export async function pollVeoJob(operationName: string): Promise<VeoPollResult> {
